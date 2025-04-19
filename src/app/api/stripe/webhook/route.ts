@@ -1,8 +1,8 @@
 import prisma from "@/lib/prisma";
 // import { umamiTrackCheckoutSuccessEvent } from "@/lib/umami";
-import { createClient } from "next-sanity";
-import { headers } from "next/headers";
-import { NextResponse } from "next/server";
+import {createClient} from "next-sanity";
+import {headers} from "next/headers";
+import {NextResponse} from "next/server";
 import Stripe from "stripe";
 
 export async function POST(req: Request) {
@@ -26,10 +26,10 @@ export async function POST(req: Request) {
         const headerList = await headers();
         const signature = headerList.get("stripe-signature");
 
-        if(!signature) {
+        if (!signature) {
             return NextResponse.json(
-                { error: 'No signature found '},
-                { status: 400 }
+                {error: 'No signature found '},
+                {status: 400}
             );
         }
 
@@ -41,23 +41,35 @@ export async function POST(req: Request) {
                 signature,
                 webhookSecret
             );
-        } catch(e) {
+        } catch (e) {
             console.log("Event couldn't be constructed:");
             console.log(e);
             return NextResponse.json(
-                { error: 'Invalid signature '},
-                { status: 400 }
+                {error: 'Invalid signature '},
+                {status: 400}
             );
         }
 
-        switch(event.type) {
+        switch (event.type) {
             case 'checkout.session.completed': {
-                const session = event.data.object as Stripe.Checkout.Session;
+                const session = event.data.object as Stripe.Checkout.Session & {
+                    shipping_details?: {
+                        name?: string;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            city?: string;
+                            state?: string;
+                            postal_code?: string;
+                            country?: string;
+                        };
+                    };
+                };;
 
                 const cartId = session.metadata?.cartId;
                 const userId = session.metadata?.userId;
 
-                if(!cartId) {
+                if (!cartId) {
                     throw new Error("No cart ID in session metadata");
                 }
 
@@ -70,11 +82,45 @@ export async function POST(req: Request) {
                     }
                 });
 
-                if(!cart) {
+                if (!cart) {
                     throw new Error("Cart not found");
                 }
 
-                const order = await sanityClient.create({
+                // const order = await sanityClient.create({
+                //     _type: 'order',
+                //     orderNumber: session.id.slice(-8).toUpperCase(),
+                //     orderDate: new Date().toISOString(),
+                //     customerId: userId !== '-' ? userId : undefined,
+                //     customerEmail: session.customer_details?.email,
+                //     customerName: session.customer_details?.name,
+                //     stripeCustomerId: typeof session.customer === 'object' ? session.customer?.id || '' : session.customer,
+                //     stripeCheckoutSessionId: session.id,
+                //     stripePaymentIntentId: session.payment_intent as string,
+                //     totalPrice: Number(session.amount_total) / 100,
+                //     shippingAddress: {
+                //         _type: 'shippingAddress',
+                //         name: session.shipping_details?.name,
+                //         line1: session.shipping_details?.address?.line1,
+                //         line2: session.shipping_details?.address?.line2,
+                //         city: session.shipping_details?.address?.city,
+                //         state: session.shipping_details?.address?.state,
+                //         postalCode: session.shipping_details?.address?.postal_code,
+                //         country: session.shipping_details?.address?.country,
+                //     },
+                //     orderItems: cart.items.map((item) => ({
+                //         _type: 'orderItem',
+                //         _key: item.id,
+                //         product: {
+                //             _type: 'reference',
+                //             _ref: item.sanityProductId,
+                //         },
+                //         quantity: item.quantity,
+                //         price: item.price
+                //     })),
+                //     status: 'PROCESSING',
+                // });
+
+                await sanityClient.create({
                     _type: 'order',
                     orderNumber: session.id.slice(-8).toUpperCase(),
                     orderDate: new Date().toISOString(),
@@ -134,13 +180,13 @@ export async function POST(req: Request) {
                 break;
             }
         }
-        return NextResponse.json({ success: true });
-    } catch(e) {
+        return NextResponse.json({success: true});
+    } catch (e) {
         console.log("Something went wrong:");
         console.log(e);
         return NextResponse.json(
-            { error: 'Webhook handler failed' },
-            { status: 500 },
+            {error: 'Webhook handler failed'},
+            {status: 500},
         )
     }
 }
